@@ -110,6 +110,7 @@ public void upgradeLevels() throws SQLException {
 
 ## chapter 5-6
 Mail보내는 기능 생성(Dummy)
+1.  LevelUpgrade 로직을 따로 인터페이스를 생성해 분리했다. 책과 구조가 조금 다르다.
 
 ```
 //  springbook.user.service.UserUpgradeImpl;
@@ -132,7 +133,7 @@ Mail보내는 기능 생성(Dummy)
         mailSender.send(mailMessage);
     }
 ```
-1.  LevelUpgrade 로직을 따로 인터페이스를 생성해 분리했다. 책과 구조가 조금 다르다.
+2.  Bean으로 등록
 
 ```
   <bean id="userLevelUpgradePolicy" class="springbook.user.service.UserUpgradeImpl">
@@ -142,7 +143,64 @@ Mail보내는 기능 생성(Dummy)
   <bean id="mainSender" class="springbook.user.service.DummyMailSender"/>
 
 ```
-2.  Bean으로 등록
+## chapter 5-7
+Mock을 이용한 EmailSend Test(DB와 User에 Email을 추가했으니, Dao에 Email을 추가하도록 수정해야한다.)
+
+1. MailSender을 구현한 MockMailSender
+```
+public class MockMailSender implements MailSender {
+
+    private List<String> requests = new ArrayList<>();
+
+    public List<String> getRequests() {
+        return requests;
+    }
+
+    @Override
+    public void send(SimpleMailMessage simpleMailMessage) throws MailException {
+        requests.add(simpleMailMessage.getTo()[0]);
+    }
+
+    @Override
+    public void send(SimpleMailMessage[] simpleMailMessages) throws MailException {
+    }
+    
+```
+2. MockMailSender를 이용한 Test
+```
+	@Test
+    @DirtiesContext	// 컨텍스트의 DI 설정올 변경하는 테스트라는 것을 알려준다.
+    public void upgradeLevels() {
+        userDao.deleteAll();
+
+        MockMailSender mockMailSender = new MockMailSender();
+        UserUpgradeImpl userUpgrade = new UserUpgradeImpl();
+        userUpgrade.setMailSender(mockMailSender);
+
+        userService.setUpgradePolicy(userUpgrade);
+
+        for (User user : users) {
+            userService.add(user);
+        }
+
+        userService.upgradeLevels();
+
+        checkLevelUpgraded(users.get(0), false);
+        checkLevelUpgraded(users.get(1), true);
+        checkLevelUpgraded(users.get(2), false);
+        checkLevelUpgraded(users.get(3), true);
+        checkLevelUpgraded(users.get(4), false);
+
+        List<String> requests = mockMailSender.getRequests();
+
+        Assertions.assertTrue(requests.size() == 2);
+        Assertions.assertTrue(requests.get(0).equals(users.get(1).getEmail()));
+        Assertions.assertTrue(requests.get(1).equals(users.get(3).getEmail()));
+
+    }
+```
+
+
 
 
 
