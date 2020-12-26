@@ -202,7 +202,7 @@ public class MockMailSender implements MailSender {
 
 ## chapter 6-1
 
-# Transaction과 UserService 분리
+### Transaction과 UserService 분리
 1.  UserService에서 Transaction을 분리
 2.  UserService를 Interaface로 선언
 ```
@@ -297,5 +297,77 @@ public class UserServiceTx implements UserService {
     }
 ```
 
+## chapter 6-2
+### MockUserDao를 이용한 테스트
 
+1.  MockUserDao 생성
+```
+public class MockUserDao implements UserDao {
+
+    private List<User> users;
+    private List<User> updated = new ArrayList<>();
+
+    public MockUserDao(List<User> users) {
+        this.users = users;
+    }
+
+    public List<User> getUpdated() {
+        return updated;
+    }
+
+    @Override
+    public List<User> getAll() {
+        return this.users;
+    }
+
+
+
+    @Override
+    public int update(User user) {
+        updated.add(user);
+        return 0;
+    }
+	
+	// 사용하지 않는 나머지 메서드들은 throw new UnsupportedOperationException()을 사용해서 해당 메서드를
+	// 사용한다면 예외를 던져주도록 설정한다.
+	@Override
+    public void deleteAll() {
+        throw new UnsupportedOperationException();
+    }
+	...
+}
+```
+2.  Test 수정
+```
+  @Test
+    @DirtiesContext
+    public void upgradeLevels() {
+        userDao.deleteAll();
+
+        MockMailSender mockMailSender = new MockMailSender();
+        UserUpgradeImpl userUpgrade = new UserUpgradeImpl();
+        userUpgrade.setMailSender(mockMailSender);
+
+        MockUserDao mockUserDao = new MockUserDao(this.users);
+
+        userServiceImpl.setUserDao(mockUserDao);
+        userServiceImpl.setUpgradePolicy(userUpgrade);
+
+        userService.upgradeLevels();
+
+        List<User> updated = mockUserDao.getUpdated();
+
+        Assertions.assertTrue(updated.size() == 2);
+
+        checkUserAndLevel(updated.get(0), users.get(1).getId(), Level.SILVER);
+        checkUserAndLevel(updated.get(1), users.get(3).getId(), Level.GOLD);
+
+        List<String> requests = mockMailSender.getRequests();
+
+        Assertions.assertTrue(requests.size() == 2);
+        Assertions.assertTrue(requests.get(0).equals(users.get(1).getEmail()));
+        Assertions.assertTrue(requests.get(1).equals(users.get(3).getEmail()));
+
+    }
+```
 
