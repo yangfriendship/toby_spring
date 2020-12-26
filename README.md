@@ -200,7 +200,102 @@ public class MockMailSender implements MailSender {
     }
 ```
 
+## chapter 6-1
 
+# Transaction과 UserService 분리
+1.  UserService에서 Transaction을 분리
+2.  UserService를 Interaface로 선언
+```
+public interface UserService {
+
+    void add(User user);
+
+    void upgradeLevels();
+
+}
+```
+3.  기존의 UserService를 `UserServiceImpl`로 변경(Transaction관련된 코드 모두 제거)
+4.  Transaction기능이 추가된 `UserServiceTx`를 생성( `UserServiceImpl`를 주입받는다)
+```
+public class UserServiceTx implements UserService {
+
+    private UserService userService;
+    private PlatformTransactionManager transactionManager;
+
+    public void setUserService(UserService userService) {
+        this.userService = userService;
+    }
+
+    public void setTransactionManager(
+        PlatformTransactionManager transactionManager) {
+        this.transactionManager = transactionManager;
+    }
+
+    @Override
+    public void add(User user) {
+        userService.add(user);
+    }
+
+    @Override
+    public void upgradeLevels() {
+
+        TransactionStatus status = transactionManager
+            .getTransaction(new DefaultTransactionDefinition());
+
+        try {
+
+            userService.upgradeLevels();
+            this.transactionManager.commit(status);
+        } catch (RuntimeException e) {
+            this.transactionManager.rollback(status);
+            throw e;
+        }
+
+    }
+}
+```
+5.  xml파일 수정
+```
+  <bean id="userService" class="springbook.user.service.UserServiceTx">
+    <property name="userService" ref="userServiceImpl"/>
+    <property name="transactionManager" ref="transactionManager" />
+  </bean>
+
+  <bean id="userServiceImpl" class="springbook.user.service.UserServiceImpl">
+    <property name="userDao" ref="userDao"/>
+    <property name="upgradePolicy" ref="userLevelUpgradePolicy"/>
+  </bean>
+```
+이로써 Dao를 이용하여 비즈니스 로직을 수행하는 Service와 Transaction기능을 분리했다.
+
+6.  TestCode 수정
+```
+   @Test
+    public void upgradeAllOrNothing() {
+        userDao.deleteAll();
+
+        TestUserUpgradePolicy testUserUpgradePolicy = new TestUserUpgradePolicy(
+            users.get(3).getId());
+        userServiceImpl.setUpgradePolicy(testUserUpgradePolicy);
+        userServiceImpl.setUserDao(userDao);
+
+        UserServiceTx userServiceTx = new UserServiceTx();
+        userServiceTx.setUserService(userServiceImpl);
+        userServiceTx.setTransactionManager(transactionManager);
+
+        for (User user : users) {
+            userServiceTx.add(user);
+        }
+
+        try {
+            userServiceTx.upgradeLevels();
+            fail("TestUserServiceException Expected");
+        } catch (TestUserServiceException e) {
+            // catch로 꼭 넘어와야 한다.
+        }
+        checkLevelUpgraded(users.get(1), false);
+    }
+```
 
 
 
