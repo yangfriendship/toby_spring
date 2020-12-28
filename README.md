@@ -484,3 +484,96 @@ public class TransactionHandler implements InvocationHandler {
     }
 ```
 
+## chapter 6-6
+# 다이나믹 프록시 Bean으로 등록
+1.  스프링은 Bean을 생성하는 방법을 생성자 방법뿐만 아니라, FactoryBean인터페이스도 이용할 수 있다.
+```
+public class TxProxyFactoryBean implements FactoryBean<Object> {
+
+    private Object target;
+    private PlatformTransactionManager transactionManager;
+    private String pattern;
+    private Class<?> serviceInterface;
+
+    public void setServiceInterface(Class<?> serviceInterface) {
+        this.serviceInterface = serviceInterface;
+    }
+
+    public void setTarget(Object target) {
+        this.target = target;
+    }
+
+    public void setTransactionManager(
+        PlatformTransactionManager transactionManager) {
+        this.transactionManager = transactionManager;
+    }
+
+    public void setPattern(String pattern) {
+        this.pattern = pattern;
+    }
+
+    @Override
+    public Object getObject() throws Exception {
+        TransactionHandler txHandler = new TransactionHandler();
+        txHandler.setTarget(target);
+        txHandler.setTransactionManager(transactionManager);
+        txHandler.setPattern(pattern);
+        return Proxy.newProxyInstance(
+            getClass().getClassLoader()
+            , new Class[]{serviceInterface}
+            , txHandler);
+    }
+
+    @Override
+    public Class<?> getObjectType() {
+        return serviceInterface;
+    }
+
+    @Override
+    public boolean isSingleton() {
+        return false;
+    }
+}
+```
+2.  xml의 userService 변경
+```
+  <bean id="userService" class="springbook.user.service.`TxProxyFactoryBean`">
+    <property name="target" ref="userServiceImpl"/>
+    <property name="pattern" value="upgradeLevels"/>
+    <property name="transactionManager" ref="transactionManager"/>
+    <property name="serviceInterface" value="springbook.user.service.UserService"/>
+  </bean>
+```
+이와 같은 방식으로 다른 객체에도 트랜잭션을 적용할 수 있다.
+
+3.  Test 변경
+```
+    @Test
+    @DirtiesContext
+    public void upgradeAllOrNothing() throws Exception {
+        userDao.deleteAll();
+
+        UserServiceImpl userService = new UserServiceImpl();
+        UserUpgradeImpl upgradePolicy = new UserUpgradeImpl();
+        upgradePolicy.setMailSender(mock(MailSender.class));
+
+        userService.setUpgradePolicy(new TestUserUpgradePolicy(users.get(3).getId()));
+        userService.setUserDao(this.userDao);
+
+        TxProxyFactoryBean txProxyFactoryBean
+            = context.getBean("&userService", TxProxyFactoryBean.class);
+
+        txProxyFactoryBean.setTarget(userService);
+        UserService txUserService = (UserService) txProxyFactoryBean.getObject();
+        for (User user : users) {
+            txUserService.add(user);
+        }
+        try {
+            txUserService.upgradeLevels();
+            fail("TestUserServiceException expected");
+        } catch (TestUserServiceException e) {
+            checkLevelUpgraded(users.get(1), false);
+        }
+    }
+```
+
