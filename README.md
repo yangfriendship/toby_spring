@@ -371,7 +371,7 @@ public class MockUserDao implements UserDao {
     }
 ```
 
-## chapter 6-2
+## chapter 6-3
 # Mockito를 이용한 테스트
 테스트를 위한 class를 만들지 말고, Mockito를 이용한 테스트로 변경
 ```
@@ -404,3 +404,83 @@ public class MockUserDao implements UserDao {
 2.  when(`mockObject.method`).thenReturn(`return value`); Mock객체의 메서드가 호출될 때, 반환될 값을 설정
 3.  verify(`mockObject`,times(`expected times`)).upate(any(`type of return value`));  
 반환값의 종류에 상관없이(`any`), upate(`target Mehtod`)가 몇 번 호출되었는지 설정
+
+## chapter 6-4
+# 다이나믹 프록시를 이용한 트랜잭션
+1.  InvocationHandler을 구현한 클래스
+```
+public class TransactionHandler implements InvocationHandler {
+
+    private Object target;
+    private PlatformTransactionManager transactionManager;
+    private String pattern;
+
+    public void setTarget(Object target) {
+        this.target = target;
+    }
+
+    public void setTransactionManager(
+        PlatformTransactionManager transactionManager) {
+        this.transactionManager = transactionManager;
+    }
+
+    public void setPattern(String pattern) {
+        this.pattern = pattern;
+    }
+
+    @Override
+    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+
+        if (method.getName().startsWith(pattern)) {
+            return invokeInTransaction(method, args);
+        }
+        return method.invoke(method, args);
+    }
+
+    private Object invokeInTransaction(Method method, Object[] args) throws Throwable {
+        TransactionStatus status = this.transactionManager
+            .getTransaction(new DefaultTransactionDefinition());
+
+        try {
+            Object ret = method.invoke(target, args);
+            this.transactionManager.commit(status);
+            return ret;
+        } catch (InvocationTargetException e) {
+            this.transactionManager.rollback(status);
+            throw e.getTargetException();
+        }
+    }
+}
+```
+2.  테스트 코드 변경
+(기존의 UserServiceImpl는 트랙잭션이 적용되지 않았다.)
+```
+ @Test
+    public void mockUpgradeLevelsWithTransactionHandlerTest() {
+
+        UserServiceImpl UserService = new UserServiceImpl();
+
+        UserDao mockUserDao = mock(UserDao.class);
+        when(mockUserDao.getAll()).thenReturn(this.users);
+
+        MailSender mockMailSender = mock(MailSender.class);
+        UserUpgradeImpl upgradePolicy = new UserUpgradeImpl();
+        upgradePolicy.setMailSender(mockMailSender);
+
+        UserService.setUserDao(mockUserDao);
+        UserService.setUpgradePolicy(upgradePolicy);
+
+        TransactionHandler transactionHandler = new TransactionHandler();
+        transactionHandler.setPattern("upgradeLevels");
+        transactionHandler.setTarget(UserService);
+        transactionHandler.setTransactionManager(this.transactionManager);
+
+        UserService txUserService = (UserService) Proxy.newProxyInstance(
+            getClass().getClassLoader()
+            , new Class[]{UserService.class}
+            , transactionHandler);
+        txUserService.upgradeLevels();
+		//... 
+    }
+```
+
