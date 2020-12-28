@@ -371,3 +371,36 @@ public class MockUserDao implements UserDao {
     }
 ```
 
+## chapter 6-2
+# Mockito를 이용한 테스트
+테스트를 위한 class를 만들지 말고, Mockito를 이용한 테스트로 변경
+```
+   @Test
+    public void mockUpgradeLevelsTest() {
+        UserServiceImpl userServiceImpl = new UserServiceImpl();
+        UserDao mockUserDao = mock(UserDao.class);
+        when(mockUserDao.getAll()).thenReturn(this.users);
+
+        userServiceImpl.setUserDao(mockUserDao);    //Mock Dao를 넣음
+
+        MailSender mockMailSender = mock(MailSender.class);
+        UserUpgradeImpl upgradePolicy = new UserUpgradeImpl();
+        upgradePolicy.setMailSender(mockMailSender);
+
+        userServiceImpl.setUpgradePolicy(upgradePolicy);
+
+        userServiceImpl.upgradeLevels();
+
+        verify(mockUserDao, times(2)).update(any(User.class));
+        verify(mockUserDao, times(2)).update(any(User.class));
+        verify(mockUserDao).update(users.get(1));
+        Assertions.assertTrue(users.get(1).getLevel() == Level.SILVER);
+        verify(mockUserDao).update(users.get(3));
+        Assertions.assertTrue(users.get(3).getLevel() == Level.GOLD);
+
+    }
+```
+1.  mock(`className`); 해당 클래스에 대한 Mock을 생성
+2.  when(`mockObject.method`).thenReturn(`return value`); Mock객체의 메서드가 호출될 때, 반환될 값을 설정
+3.  verify(`mockObject`,times(`expected times`)).upate(any(`type of return value`));  
+반환값의 종류에 상관없이(`any`), upate(`target Mehtod`)가 몇 번 호출되었는지 설정
