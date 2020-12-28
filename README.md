@@ -577,3 +577,101 @@ public class TxProxyFactoryBean implements FactoryBean<Object> {
     }
 ```
 
+## chapter 6-6
+# ProxyFactoryBean으로 다이나믹 프록시 등록할
+1.  InvocationHandler는 Target을 설정해야 했지만 ProxyFactoryBean은 설정할 필요가 없다.
+2.  setInstance를 통해서 반환 타입을 정해줘야 했지만, ProxyFactoryBean은 알아서 설정해준다.
+3.  ProxyFactoryBean는 적용될 메서드를 직접 설정할 수 있다.
+```
+ProxyFactoryBean pfBean = new ProxyFactoryBean();
+
+        pfBean.setTarget(new HelloTarget());
+
+        NameMatchMethodPointcut pointcut = new NameMatchMethodPointcut();
+        pointcut.addMethodName("*Hi");
+        pointcut.addMethodName("*Hello");
+        pointcut.addMethodName("*ThankYou");
+        
+        pfBean.addAdvisor(new DefaultPointcutAdvisor(pointcut,new UppercaseAdvice()));
+
+        Hello hello = (Hello) pfBean.getObject();
+```
+4.  어드바이저 = 포인트컷(메소드 선정 알고리즘)+ 어드바이스(부가기능)
+	-  addAdvisor()는 부가기능(advice)와 포인트컷(methodName)을 동시에 받을 수 있다.
+	-  addAdvice()는 부가기능(advice)만 받는다.
+	-  NameMatchMethodPointcut은 내부적으로 메서드 이름을 List형태로 저장한다.
+```
+public class NameMatchMethodPointcut extends StaticMethodMatcherPointcut implements Serializable {
+    private List<String> mappedNames = new LinkedList();
+	...
+	    public NameMatchMethodPointcut addMethodName(String name) {
+        this.mappedNames.add(name);
+        return this;
+    }
+	...
+	}
+```
+5.  트랜잭션이 로직이 설정된 TransactionAdvice
+```
+public class TransactionAdvice implements MethodInterceptor {
+
+    private PlatformTransactionManager transactionManager;
+
+    public void setTransactionManager(
+        PlatformTransactionManager transactionManager) {
+        this.transactionManager = transactionManager;
+    }
+
+    @Override
+    public Object invoke(MethodInvocation invocation) throws Throwable {
+        TransactionStatus status = this.transactionManager
+            .getTransaction(new DefaultTransactionDefinition());
+        try {
+            Object ret = invocation.proceed();
+            this.transactionManager.commit(status);
+            return ret;
+        } catch (RuntimeException e) {
+            this.transactionManager.rollback(status);
+            throw e;
+        }
+    }
+}
+```
+	-  재사용이 가능하다.
+	-  target을 따로 받지 않아서, 다른 객체에 트랜잭션을 적용할 때도 재사용이 가능하다.
+6.  xml파일 설정
+```
+  <bean id="transactionAdvice" class="springbook.user.service.TransactionAdvice">
+    <property name="transactionManager" ref="transactionManager"/>
+  </bean>
+
+  <bean id="transactionPointcut" class="org.springframework.aop.support.NameMatchMethodPointcut">
+    <property name="mappedName" value="upgrade*"/>
+  </bean>
+
+  <bean id="transactionAdvisor" class="org.springframework.aop.support.DefaultPointcutAdvisor">
+    <property name="advice" ref="transactionAdvice"/>
+    <property name="pointcut" ref="transactionPointcut"/>
+  </bean>
+
+  <bean id="userService" class="org.springframework.aop.framework.ProxyFactoryBean">
+    <property name="target" ref="userServiceImpl"/>
+    <property name="interceptorNames">
+      <list>
+        <value>transactionAdvisor</value>
+        <!--한 개 이상의 부가기능을 넣을 수 있다.-->
+      </list>
+    </property>
+  </bean>
+```
+	-  userService는 이제 ProxyFactoryBean
+	-  String[]으로 적용될 DefaultPointcutAdvisor를 구현한 객체를 저장한다.(DefaultPointcutAdvisor에 적용될 메서드 이름과 부기가능(Advisor구현체)가 들어있다.)
+```
+public class ProxyFactoryBean extends ProxyCreatorSupport implements FactoryBean<Object>, BeanClassLoaderAware, BeanFactoryAware {
+	...
+    private String[] interceptorNames;
+	...
+	}
+```	
+
+
