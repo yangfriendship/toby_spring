@@ -673,5 +673,72 @@ public class ProxyFactoryBean extends ProxyCreatorSupport implements FactoryBean
 	...
 	}
 ```	
+## chapter 6-7
+# Spring Aop 프록시 자동생성
+1.  빈 후처리기를 이용한 자동 프록시 생성
+	-  BeanPostProcessor 인터페이스를 구현해서 만드는 빈 후속처리기
+	-  빈 오브젝트로 만든 후, 다시 가공할 수 있게 해준다.
+	-  DefaultAdvisorAutoProxyCreator
+	-  빈 오브젝트의 프로퍼티를 강제로 수정 및 별도의 작업을 할 수 있다. 심지어 오브젝트 자체를 바꿔치기 가능
+	-  
+2.  포인트컷
+```
+package org.springframework.aop;
 
+public interface Pointcut {
+    Pointcut TRUE = TruePointcut.INSTANCE;
 
+    ClassFilter getClassFilter();
+
+    MethodMatcher getMethodMatcher();
+}
+```
+	-  ProxyFactoryBean에서는 이미 어드바이스가 적용될 객체가 넘어오기 때문에 메서드 이름만 검사한다.
+	-  NameMatchMethodPointcut은 메서드 이름만 판단한다.
+	-  포인트컷이 클래스 필터까지 적용됐다면 클래스 필터단에서 걸러졌다면, 프록시를 적용해도 부기가능을 적용할 수 없다.
+	
+3.  어드바이저를 이용하는 자동 프록시 생성기 등록
+```
+public class NameMatchClassMethodPointcut extends NameMatchMethodPointcut {
+
+    public void setMappedClassName(String mappedClassName) {
+        this.setClassFilter(new SimpleClassFilter(mappedClassName));
+    }
+
+    static class SimpleClassFilter implements ClassFilter {
+
+        private String mappedName;
+
+        private SimpleClassFilter(String mappedName) {
+            this.mappedName = mappedName;
+        }
+
+        @Override
+        public boolean matches(Class<?> aClass) {
+            return PatternMatchUtils.simpleMatch(mappedName
+                , aClass.getSimpleName());
+        }
+    }
+
+}
+```
+NameMatchClassMethodPointcut를 상속하고 내부 클래스에 ClassFilter를 구현한 SimpleClassFilter가 있다.
+
+```
+  <bean class=
+    "org.springframework.aop.framework.autoproxy.DefaultAdvisorAutoProxyCreator"/>
+```
+다른 빈에서 참조되거나 조회될 필요가 없는 빈이라면 아이디를 등록하지 않아도 무방하다.
+```
+  <bean id="userService" class="springbook.user.service.UserServiceImpl">
+    <property name="userDao" ref="userDao"/>
+    <property name="upgradePolicy" ref="userLevelUpgradePolicy"/>
+  </bean>
+
+  <bean id="transactionPointcut" class="springbook.user.service.NameMatchClassMethodPointcut">
+    <property name="mappedClassName" value="*ServiceImpl"/>
+    <property name="mappedName" value="upgrade*"/>
+  </bean>
+```
+transactionPointcut의 프로퍼티에 amppedClassName을 추가하고 value로 적용될 class들의 이름을 설정해준다.
+그리고 userService는 이제 트랜잭션 기능을 자동으로 적용 받는다.
