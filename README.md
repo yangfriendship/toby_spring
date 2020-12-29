@@ -742,3 +742,10 @@ NameMatchClassMethodPointcut를 상속하고 내부 클래스에 ClassFilter를 
 ```
 transactionPointcut의 프로퍼티에 amppedClassName을 추가하고 value로 적용될 class들의 이름을 설정해준다.
 그리고 userService는 이제 트랜잭션 기능을 자동으로 적용 받는다.
+
+## chapter 6-8
+#  미작성
+
+1.  H2 데이터베이스 read-only 적용되지 않는다.
+2.  중간에 AOP관련 용어 정리
+3.  AOP관련 xml파일 작성법 정리
