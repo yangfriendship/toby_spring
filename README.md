@@ -749,3 +749,6 @@ transactionPointcut의 프로퍼티에 amppedClassName을 추가하고 value로 
 1.  H2 데이터베이스 read-only 적용되지 않는다.
 2.  중간에 AOP관련 용어 정리
 3.  AOP관련 xml파일 작성법 정리
+
+## chapter 6-9
+# 미작성
